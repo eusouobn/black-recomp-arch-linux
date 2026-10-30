@@ -46,7 +46,7 @@ fi
 # ------------------------------------------------------------------
 echo -e "${YELLOW}[1/6]${NC} Installing base dependencies..."
 sudo pacman -S --needed --noconfirm \
-  base-devel clang lld cmake ninja git pkgconf \
+  base-devel rsync clang lld cmake ninja git pkgconf \
   vulkan-headers vulkan-icd-loader shaderc sdl3 \
   libx11 libxext libxrandr libxcursor libxi libxkbcommon \
   wayland wayland-protocols pipewire alsa-lib libpulse
