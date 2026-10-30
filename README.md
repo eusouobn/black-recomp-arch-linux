@@ -20,8 +20,8 @@ This setup will:
 1. Clone this repo
 
 ```bash
-git clone https://github.com/eusouobn/BLACK-XBERecomp-Linux-Arch-Setup.git
-cd BLACK-XBERecomp-Linux-Arch-Setup
+git clone https://github.com/eusouobn/black-recomp-arch-linux.git
+cd black-recomp-arch-linux
 ```
 
 2. Make the script executable and run it
