@@ -28,6 +28,22 @@ FORK_DIR="$HOME/BLACK-XBERecomp-Linux"
 ASSETS_DIR="$FORK_DIR/assets"
 EXEC_PATH="$FORK_DIR/out/build/release/black"
 
+# Where the finished game is installed: executable + assets side by side.
+GAMES_DIR="${GAMES_DIR:-$HOME/Games}"
+INSTALL_DIR="$GAMES_DIR/BLACK"
+INSTALLED_EXEC="$INSTALL_DIR/black"
+RUN_DIR="$FORK_DIR"
+RUN_CMD="cd $FORK_DIR && ./out/build/release/black"
+
+# Temp dir used while extracting the XISO; always cleaned up on exit.
+EXTRACT_TMP=""
+cleanup_extract_tmp() {
+  if [ -n "$EXTRACT_TMP" ]; then
+    rm -rf -- "$EXTRACT_TMP"
+  fi
+}
+trap cleanup_extract_tmp EXIT
+
 echo -e "${BLUE}============================================${NC}"
 echo -e "${BLUE}  BLACK-XBERecomp-Linux | Arch Linux Setup${NC}"
 echo -e "${BLUE}============================================${NC}"
@@ -42,9 +58,9 @@ if [ "$EUID" -eq 0 ]; then
 fi
 
 # ------------------------------------------------------------------
-# 1/6 Dependencies (base + yay + extract-xiso)
+# 1/7 Dependencies (base + yay + extract-xiso)
 # ------------------------------------------------------------------
-echo -e "${YELLOW}[1/6]${NC} Installing base dependencies..."
+echo -e "${YELLOW}[1/7]${NC} Installing base dependencies..."
 sudo pacman -S --needed --noconfirm \
   base-devel rsync clang lld cmake ninja git pkgconf \
   vulkan-headers vulkan-icd-loader shaderc sdl3 \
@@ -76,9 +92,9 @@ fi
 echo ""
 
 # ------------------------------------------------------------------
-# 2/6 Clone fork (fresh by default; KEEP_FORK=1 to preserve)
+# 2/7 Clone fork (fresh by default; KEEP_FORK=1 to preserve)
 # ------------------------------------------------------------------
-echo -e "${YELLOW}[2/6]${NC} Preparing fork: $FORK_DIR"
+echo -e "${YELLOW}[2/7]${NC} Preparing fork: $FORK_DIR"
 
 if [ "${KEEP_FORK:-0}" = "1" ] && [ -d "$FORK_DIR" ]; then
   echo -e "${YELLOW}[INFO]${NC} KEEP_FORK=1 — reusing existing clone."
@@ -94,9 +110,9 @@ fi
 echo ""
 
 # ------------------------------------------------------------------
-# 3/6 Game files — search for XISOs, then validate game/
+# 3/7 Game files — search for XISOs, then validate game/
 # ------------------------------------------------------------------
-echo -e "${YELLOW}[3/6]${NC} Preparing game files in: $GAME_SRC"
+echo -e "${YELLOW}[3/7]${NC} Preparing game files in: $GAME_SRC"
 mkdir -p "$GAME_SRC"
 
 # --- 3a) Search for Black XISO/ISO files ---
@@ -132,8 +148,33 @@ else
     read -p "Extract \"$(basename "$f")\" to $GAME_SRC? [y/N]: " EXTRACT
     if [[ "$EXTRACT" =~ ^[Yy]$ ]]; then
       echo -e "${YELLOW}[INFO]${NC} Extracting: $(basename "$f") ..."
-      extract-xiso -x "$f" -d "$GAME_SRC"
+
+      # extract-xiso aborts when the destination already contains any of the
+      # game's files/directories (e.g. a previous interrupted extraction:
+      # "unable to create directory chars: File exists"). So extract into a
+      # clean temp dir first and only then replace the old contents.
+      EXTRACT_TMP="$(mktemp -d "$REPO_ROOT/.xiso-extract.XXXXXX")"
+      if ! extract-xiso -x "$f" -d "$EXTRACT_TMP"; then
+        echo -e "${RED}[ERROR]${NC} Extraction failed: $(basename "$f")"
+        echo -e "${YELLOW}[INFO]${NC} Existing files in $GAME_SRC were left untouched."
+        exit 1
+      fi
+
+      # Remove previous extraction output, keeping repo placeholders.
+      find "$GAME_SRC" -mindepth 1 -maxdepth 1 \
+        ! -name 'README.md' ! -name '.gitkeep' \
+        -exec rm -rf -- {} +
+      cp -a -- "$EXTRACT_TMP"/. "$GAME_SRC"/
+      rm -rf -- "$EXTRACT_TMP"
+      EXTRACT_TMP=""
+
       echo -e "${GREEN}[OK]${NC} Extracted: $(basename "$f")"
+
+      # Optional: drop the source image after a successful extraction.
+      if [ "${DELETE_XISO:-0}" = "1" ]; then
+        echo -e "${YELLOW}[INFO]${NC} DELETE_XISO=1 — removing: $f"
+        rm -f -- "$f"
+      fi
     else
       echo -e "${YELLOW}[SKIP]${NC} Skipped: $(basename "$f")"
     fi
@@ -219,9 +260,9 @@ echo -e "${GREEN}[OK]${NC} Assets copied."
 echo ""
 
 # ------------------------------------------------------------------
-# 4/6 Build
+# 4/7 Build
 # ------------------------------------------------------------------
-echo -e "${YELLOW}[4/6]${NC} Building BLACK-XBERecomp-Linux..."
+echo -e "${YELLOW}[4/7]${NC} Building BLACK-XBERecomp-Linux..."
 echo -e "${YELLOW}[INFO]${NC} First build can take 15 - 60 minutes depending on your CPU."
 echo ""
 cd "$FORK_DIR"
@@ -231,9 +272,43 @@ echo -e "${GREEN}[OK]${NC} Build completed."
 echo ""
 
 # ------------------------------------------------------------------
-# 5/6 Shortcut
+# 5/7 Install to ~/Games/BLACK (executable + assets side by side)
 # ------------------------------------------------------------------
-echo -e "${YELLOW}[5/6]${NC} Creating application shortcut..."
+echo -e "${YELLOW}[5/7]${NC} Installing game to: $INSTALL_DIR"
+
+if [ "${INSTALL_GAMES:-1}" = "1" ]; then
+  if [ ! -x "$EXEC_PATH" ]; then
+    echo -e "${RED}[WARN]${NC} Executable not found at $EXEC_PATH — skipping install."
+  else
+    mkdir -p "$INSTALL_DIR"
+
+    # The game looks for an "assets" folder beside (or above) its executable,
+    # so the game data is installed next to the binary. Hardlink when possible
+    # (same filesystem: instant, no extra disk space), otherwise copy.
+    rm -rf -- "$INSTALL_DIR/assets"
+    if cp -al -- "$ASSETS_DIR" "$INSTALL_DIR/assets" 2>/dev/null; then
+      echo -e "${GREEN}[OK]${NC} Assets linked (no extra disk space used)."
+    else
+      rm -rf -- "$INSTALL_DIR/assets"
+      rsync -ah --info=progress2 "$ASSETS_DIR"/ "$INSTALL_DIR/assets"/
+      echo -e "${GREEN}[OK]${NC} Assets copied."
+    fi
+
+    install -m 755 -- "$EXEC_PATH" "$INSTALLED_EXEC"
+    EXEC_PATH="$INSTALLED_EXEC"   # shortcuts and "Run with" point to the install
+    RUN_DIR="$INSTALL_DIR"
+    RUN_CMD="cd $INSTALL_DIR && ./black"
+    echo -e "${GREEN}[OK]${NC} Installed: $INSTALLED_EXEC"
+  fi
+else
+  echo -e "${YELLOW}[SKIP]${NC} INSTALL_GAMES=0 — game left in the build output."
+fi
+echo ""
+
+# ------------------------------------------------------------------
+# 6/7 Shortcut
+# ------------------------------------------------------------------
+echo -e "${YELLOW}[6/7]${NC} Creating application shortcut..."
 
 if [ ! -x "$EXEC_PATH" ]; then
   echo -e "${RED}[WARN]${NC} Executable not found at $EXEC_PATH"
@@ -281,7 +356,7 @@ GenericName=Xbox Game
 Comment=Xbox game BLACK recompiled for Linux
 Exec=$EXEC_PATH
 TryExec=$EXEC_PATH
-Path=$FORK_DIR
+Path=$RUN_DIR
 Icon=$ICON_FIELD
 Terminal=false
 Categories=Game;ActionGame;
@@ -309,12 +384,12 @@ fi
 echo ""
 
 # ------------------------------------------------------------------
-# 6/6 Done
+# 7/7 Done
 # ------------------------------------------------------------------
-echo -e "${YELLOW}[6/6]${NC} All done!"
+echo -e "${YELLOW}[7/7]${NC} All done!"
 echo -e "${BLUE}============================================${NC}"
 echo -e "${GREEN}Executable:${NC}   $EXEC_PATH"
-echo -e "${GREEN}Run with:${NC}     cd $FORK_DIR && ./out/build/release/black"
+echo -e "${GREEN}Run with:${NC}     $RUN_CMD"
 echo -e "${GREEN}App shortcut:${NC} Search \"BLACK\" in your application menu"
 echo -e "${GREEN}Saves/Config:${NC} Created next to the executable (hdd/, black.toml)"
 echo -e "${GREEN}Settings:${NC}     Press F10 in-game"

@@ -7,6 +7,7 @@ This setup will:
 - Clone the Linux fork of BLACK-XBERecomp
 - Automatically detect and copy your extracted Black (2006) game files
 - Build the game natively with Vulkan (no Wine/Proton/DXVK required)
+- Install the finished game to `~/Games/BLACK` (executable + game data side by side)
 
 ## Requirements
 
@@ -35,13 +36,16 @@ chmod +x scripts/build-black-xberecomp-linux.sh
 4. Launch the game
 
 ```bash
-cd ~/BLACK-XBERecomp-Linux
-./out/build/release/black
+cd ~/Games/BLACK
+./black
 ```
 
 ## Notes
 
+- **Install location**: the finished game (binary + `assets/`) is installed to `~/Games/BLACK`. The game data is hardlinked when possible, so it takes no extra disk space. Override the folder with `GAMES_DIR=/path ./scripts/build-black-xberecomp-linux.sh`, or skip the install with `INSTALL_GAMES=0`.
 - **Game files required**: This repo does **not** contain any game assets. You must provide your own extracted files from a legally acquired copy.
+- **ISO extraction**: if the destination already has files from a previous run, they are replaced automatically. Set `DELETE_XISO=1` to delete the source ISO after a successful extraction.
+- **Re-cloning**: the fork in `~/BLACK-XBERecomp-Linux` is cloned fresh on every run; use `KEEP_FORK=1` to reuse it.
 - **Native Vulkan**: This uses the Linux port by [datfooldive](https://github.com/datfooldive), running natively with SDL3 + Vulkan.
 - **Settings**: Press `F10` in-game to open the settings overlay.
 - **Saves/Config**: `hdd/`, `black.toml` and logs are created next to the executable.

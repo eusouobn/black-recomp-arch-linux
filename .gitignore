@@ -1,0 +1,11 @@
+# Extracted game files — never commit these
+/game/*
+!/game/README.md
+!/game/.gitkeep
+
+# Disc images
+*.iso
+*.xiso
+
+# Temporary extraction folder used by the build script
+/.xiso-extract.*
